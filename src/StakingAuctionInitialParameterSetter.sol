@@ -3,12 +3,10 @@ pragma solidity 0.6.7;
 import "geb-treasury-reimbursement/reimbursement/single/IncreasingTreasuryReimbursement.sol";
 
 abstract contract OracleLike {
-    function getResultWithValidity() virtual external view returns (uint256, bool);
     function read() virtual external view returns (uint);
 }
 abstract contract StakingLike {
     function modifyParameters(bytes32, uint256) virtual external;
-    function tokensToAuction() virtual view external returns (uint256);
 }
 abstract contract UniswapV2PairLike {
     function totalSupply() external virtual view returns (uint);
@@ -224,13 +222,11 @@ contract StakingAuctionInitialParameterSetter is IncreasingTreasuryReimbursement
     function getNewStakingAuctionParams() public view returns (uint256 bidSize, uint256 lpTokensToAuction) {
         // Get token price
         uint256 systemCoinPrice = systemCoinOrcl.read();
-
+        require(systemCoinPrice > 0, "StakingAuctionInitialParameterSetter/invalid_coin_price");
         // LP token fair value
         uint256 lpTokenFairValue = getLPTokenFairValue();
-
         // Get amount auctioned
         lpTokensToAuction = div(mul(tokensToSellTargetValue, WAD), lpTokenFairValue);
-
         // Total USD value for the auction
         uint256 bidPriceUSD = div(mul(lpTokenFairValue, lpTokensToAuction), WAD);
         // Total RAI value for the auction
@@ -239,9 +235,9 @@ contract StakingAuctionInitialParameterSetter is IncreasingTreasuryReimbursement
         bidSize = div(mul(bidSizeRAI, THOUSAND - bidDiscount), THOUSAND);
     }
 
-    /// @dev Return the value of the given input as USD per unit (WAD).
+    /// @notice Return the value of the given input as USD per unit (WAD)
     /// @dev Fair LP token pricing originally from Alpha Homora (https://blog.alphafinance.io/fair-lp-token-pricing/)
-    function getLPTokenFairValue() internal view returns (uint256) {
+    function getLPTokenFairValue() public view returns (uint256) {
         uint px0 = ethOrcl.read();
         uint px1 = protocolTokenOrcl.read();
         require(both(px0 != 0, px1 != 0), "StakingAuctionInitialParameterSetter/invalid_prices");
@@ -263,7 +259,7 @@ contract StakingAuctionInitialParameterSetter is IncreasingTreasuryReimbursement
         // Store the timestamp of the update
         lastUpdateTime = now;
 
-        // Updates value
+        // Updates values
         (uint256 newBidSize, uint256 newTokensToAuction) = getNewStakingAuctionParams();
         staking.modifyParameters("systemCoinsToRequest", newBidSize);
         staking.modifyParameters("tokensToAuction", newTokensToAuction);
